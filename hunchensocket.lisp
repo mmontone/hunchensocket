@@ -193,15 +193,15 @@ format control and arguments."
                                                       request)
                                         &body body)
   (alexandria:once-only (resource request)
-    `(let ((,client-sym (apply #'make-instance
+    `(let ((,client-sym (make-instance
                                (slot-value ,resource 'client-class)
                                'input-stream ,input-stream
                                'output-stream ,output-stream
                                'request ,request
-                               :request ,request
-                               (loop for (header . value)
+                               #+fixme(loop for (header . value)
                                        in (headers-in ,request)
-                                     collect header collect value))))
+                                     collect header collect value)
+                               )))
        (call-with-new-client-for-resource ,client-sym
                                           ,resource
                                           #'(lambda () ,@body)))))
