@@ -439,30 +439,37 @@ versions. Framing is handled automatically, CLIENT handles the actual
 payloads."
   (ecase version
     (:rfc-6455
-     (handler-bind ((websocket-error
-                      #'(lambda (error)
-                          (with-slots (error-status format-control format-arguments)
-                              error
-                            (close-connection
-                             client
-                             :status error-status
-                             :reason (princ-to-string error)))))
-                    (flexi-streams:external-format-error
-                      #'(lambda (e)
-                          (declare (ignore e))
-                          (close-connection client :status 1007
-                                                   :reason "Bad UTF-8")))
-                    (error
-                      #'(lambda (e)
-                          (declare (ignore e))
-                          (close-connection client :status 1011
-                                                   :reason "Internal error"))))
-       (with-slots (state) client
-         (loop do (handle-frame resource
-                                client
-                                (read-frame-from-client client))
-               while (not (eq :closed state))))))))
-
+     (let ((err))
+       (handler-bind ((error (lambda (e)
+                               (setf err e)
+                               (when hunchentoot:*catch-errors-p*
+                                 (invoke-restart 'close)))))
+         (with-slots (state) client
+           (loop do
+             (restart-case
+                 (handle-frame resource
+                               client
+                               (read-frame-from-client client))
+               (skip ()
+                 :report "Skip websocket frame")
+               (close ()
+                 :report "Close websocket connection"
+                 ;; error is in ERR variable ...
+                 (typecase err
+                   (websocket-error
+                    (with-slots (error-status format-control format-arguments)
+                        err
+                      (close-connection
+                       client
+                       :status error-status
+                       :reason (princ-to-string err))))
+                   (flexi-streams:external-format-error
+                    (close-connection client :status 1007
+                                             :reason "Bad UTF-8"))
+                   (error
+                    (close-connection client :status 1011
+                                             :reason "Internal error")))))
+                 while (not (eq :closed state)))))))))
 
 ;;; Hook onto normal Hunchentoot processing
 ;;;
